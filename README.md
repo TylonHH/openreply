@@ -65,6 +65,22 @@ The web app receives the webhook and serves the dashboard. A separate worker pro
 
 Read [docs/setup.md](docs/setup.md) for the complete walkthrough, including a provider-aware AI assistant prompt. Existing accounts are never automatically migrated. Check [Zernio’s feature limits](docs/zernio.md#feature-availability) before choosing.
 
+### Deploy everything on CapRover
+
+This fork includes a **CapRover One-Click template** that deploys the complete self-hosted stack: the OpenReply web app, worker, cron scheduler, PostgreSQL, and Redis. PostgreSQL and Redis use persistent volumes; only the web app is exposed publicly.
+
+**[Open the CapRover One-Click template](https://raw.githubusercontent.com/TylonHH/openreply/main/caprover-one-click.yml)**
+
+Use the raw template in **CapRover → Apps → One-Click Apps/Databases**. Secrets for the database, Redis, NextAuth, cron, encryption, and webhook verification are generated automatically. You only need to provide your email login configuration and, when ready, your Meta/Instagram credentials.
+
+The Docker image for this fork is automatically built by GitHub Actions and published as:
+
+```text
+ghcr.io/tylonhh/openreply:latest
+```
+
+See the complete [CapRover deployment guide](docs/deploy-caprover.md), including the one-time GHCR visibility step, HTTPS setup, updates, backups, and Meta configuration.
+
 ### Deploy the web app
 
 The button creates your web deployment. You still need to configure the database, Redis, email delivery, and a separate always-on worker.
