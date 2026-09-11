@@ -1,0 +1,236 @@
+captainVersion: 4
+services:
+  $$cap_appname-db:
+    image: postgres:$$cap_postgres_version
+    restart: always
+    environment:
+      POSTGRES_DB: openreply
+      POSTGRES_USER: $$cap_db_user
+      POSTGRES_PASSWORD: $$cap_db_password
+    volumes:
+      - $$cap_appname-db-data:/var/lib/postgresql/data
+    caproverExtra:
+      notExposeAsWebApp: 'true'
+
+  $$cap_appname-redis:
+    image: redis:$$cap_redis_version
+    restart: always
+    command:
+      [
+        'redis-server',
+        '--appendonly',
+        'yes',
+        '--requirepass',
+        '$$cap_redis_password',
+      ]
+    volumes:
+      - $$cap_appname-redis-data:/data
+    caproverExtra:
+      notExposeAsWebApp: 'true'
+
+  $$cap_appname:
+    image: ghcr.io/tylonhh/openreply:$$cap_openreply_version
+    restart: always
+    depends_on:
+      - $$cap_appname-db
+      - $$cap_appname-redis
+    command: ['sh', '-c', 'npm run db:migrate && npm run start']
+    environment:
+      NODE_ENV: production
+      NEXTAUTH_URL: https://$$cap_appname.$$cap_root_domain
+      NEXTAUTH_SECRET: $$cap_nextauth_secret
+      CRON_SECRET: $$cap_cron_secret
+      ENCRYPTION_KEY: $$cap_encryption_key
+      DATABASE_URL: postgresql://$$cap_db_user:$$cap_db_password@srv-captain--$$cap_appname-db:5432/openreply
+      REDIS_URL: redis://:$$cap_redis_password@srv-captain--$$cap_appname-redis:6379
+      RESEND_API_KEY: $$cap_resend_api_key
+      EMAIL_FROM: $$cap_email_from
+      EMAIL_SERVER: $$cap_email_server
+      ALLOWED_EMAILS: $$cap_allowed_emails
+      META_GRAPH_API_VERSION: $$cap_meta_graph_api_version
+      INSTAGRAM_APP_ID: $$cap_instagram_app_id
+      INSTAGRAM_APP_SECRET: $$cap_instagram_app_secret
+      FACEBOOK_APP_SECRET: $$cap_facebook_app_secret
+      WEBHOOK_VERIFY_TOKEN: $$cap_webhook_verify_token
+    caproverExtra:
+      containerHttpPort: '3000'
+
+  $$cap_appname-worker:
+    image: ghcr.io/tylonhh/openreply:$$cap_openreply_version
+    restart: always
+    depends_on:
+      - $$cap_appname-db
+      - $$cap_appname-redis
+    command: ['npm', 'run', 'worker']
+    environment:
+      NODE_ENV: production
+      NEXTAUTH_URL: https://$$cap_appname.$$cap_root_domain
+      NEXTAUTH_SECRET: $$cap_nextauth_secret
+      CRON_SECRET: $$cap_cron_secret
+      ENCRYPTION_KEY: $$cap_encryption_key
+      DATABASE_URL: postgresql://$$cap_db_user:$$cap_db_password@srv-captain--$$cap_appname-db:5432/openreply
+      REDIS_URL: redis://:$$cap_redis_password@srv-captain--$$cap_appname-redis:6379
+      RESEND_API_KEY: $$cap_resend_api_key
+      EMAIL_FROM: $$cap_email_from
+      EMAIL_SERVER: $$cap_email_server
+      ALLOWED_EMAILS: $$cap_allowed_emails
+      META_GRAPH_API_VERSION: $$cap_meta_graph_api_version
+      INSTAGRAM_APP_ID: $$cap_instagram_app_id
+      INSTAGRAM_APP_SECRET: $$cap_instagram_app_secret
+      FACEBOOK_APP_SECRET: $$cap_facebook_app_secret
+      WEBHOOK_VERIFY_TOKEN: $$cap_webhook_verify_token
+    caproverExtra:
+      notExposeAsWebApp: 'true'
+
+  $$cap_appname-cron:
+    image: ghcr.io/tylonhh/openreply:$$cap_openreply_version
+    restart: always
+    depends_on:
+      - $$cap_appname
+    command: ['sh', 'scripts/cron.sh']
+    environment:
+      CRON_BASE_URL: http://srv-captain--$$cap_appname:3000
+      CRON_SECRET: $$cap_cron_secret
+    caproverExtra:
+      notExposeAsWebApp: 'true'
+
+caproverOneClickApp:
+  variables:
+    - id: $$cap_openreply_version
+      label: OpenReply image tag
+      defaultValue: latest
+      description: Use latest, a release tag such as v0.1.0, or a sha-* tag published by this fork.
+      validRegex: /^([^\s^\/])+$/
+
+    - id: $$cap_postgres_version
+      label: PostgreSQL version
+      defaultValue: 16-alpine
+      validRegex: /^([^\s^\/])+$/
+
+    - id: $$cap_redis_version
+      label: Redis version
+      defaultValue: 7-alpine
+      validRegex: /^([^\s^\/])+$/
+
+    - id: $$cap_db_user
+      label: Database user
+      defaultValue: openreply
+      validRegex: /^([a-zA-Z0-9_])+$/
+
+    - id: $$cap_db_password
+      label: Database password
+      defaultValue: $$cap_gen_random_hex(32)
+      description: Generated automatically. Keep a backup with your other secrets.
+      validRegex: /^([a-zA-Z0-9]){16,}$/
+
+    - id: $$cap_redis_password
+      label: Redis password
+      defaultValue: $$cap_gen_random_hex(32)
+      description: Generated automatically. Keep a backup with your other secrets.
+      validRegex: /^([a-zA-Z0-9]){16,}$/
+
+    - id: $$cap_nextauth_secret
+      label: NEXTAUTH_SECRET
+      defaultValue: $$cap_gen_random_hex(64)
+      description: Generated automatically. Do not change it after users start signing in.
+      validRegex: /^([0-9a-f]){64}$/
+
+    - id: $$cap_cron_secret
+      label: CRON_SECRET
+      defaultValue: $$cap_gen_random_hex(64)
+      description: Generated automatically and shared by the web and cron services.
+      validRegex: /^([0-9a-f]){64}$/
+
+    - id: $$cap_encryption_key
+      label: ENCRYPTION_KEY
+      defaultValue: $$cap_gen_random_hex(64)
+      description: Exactly 64 hexadecimal characters. Back this up and never rotate it casually because stored credentials depend on it.
+      validRegex: /^([0-9a-f]){64}$/
+
+    - id: $$cap_webhook_verify_token
+      label: WEBHOOK_VERIFY_TOKEN
+      defaultValue: $$cap_gen_random_hex(32)
+      description: Use this same value when configuring Meta's webhook verification.
+      validRegex: /^([0-9a-f]){32}$/
+
+    - id: $$cap_allowed_emails
+      label: Allowed sign-in emails
+      description: Optional comma-separated allowlist. Recommended for an internet-facing instance.
+
+    - id: $$cap_email_from
+      label: EMAIL_FROM
+      defaultValue: OpenReply <login@example.com>
+      description: Sender used for magic-link login emails. Replace example.com with a verified sender/domain.
+
+    - id: $$cap_email_server
+      label: EMAIL_SERVER (optional SMTP URL)
+      description: Optional. Example smtps://user%40example.com:password@mail.example.com:465. When set, SMTP is used instead of Resend.
+
+    - id: $$cap_resend_api_key
+      label: RESEND_API_KEY (optional)
+      description: Required only when EMAIL_SERVER is empty and you want to use Resend for magic-link emails.
+
+    - id: $$cap_meta_graph_api_version
+      label: Meta Graph API version
+      defaultValue: v25.0
+      validRegex: /^v[0-9]+\.[0-9]+$/
+
+    - id: $$cap_instagram_app_id
+      label: INSTAGRAM_APP_ID
+      description: Optional during installation if you plan to configure Instagram later.
+
+    - id: $$cap_instagram_app_secret
+      label: INSTAGRAM_APP_SECRET
+      description: Optional during installation if you plan to configure Instagram later.
+
+    - id: $$cap_facebook_app_secret
+      label: FACEBOOK_APP_SECRET
+      description: Optional during installation if you plan to configure Instagram later.
+
+  instructions:
+    start: |-
+      OpenReply is a self-hosted Instagram comment-to-DM automation platform.
+
+      This CapRover template deploys the complete self-hosted stack:
+       - OpenReply web application
+       - OpenReply background worker
+       - OpenReply cron scheduler
+       - PostgreSQL with persistent storage
+       - Redis with persistent storage and authentication
+
+      The database, Redis, worker, and cron services are internal-only. Only the main
+      OpenReply web application is exposed through CapRover.
+
+      Before installing, make sure ghcr.io/tylonhh/openreply is publicly readable.
+      For login, provide either EMAIL_SERVER or RESEND_API_KEY plus a valid EMAIL_FROM.
+      Meta/Instagram credentials can be entered now or configured later in CapRover.
+
+    end: |-
+      OpenReply has been deployed at:
+      https://$$cap_appname.$$cap_root_domain
+
+      Next steps:
+       1. Open the $$cap_appname app in CapRover and enable HTTPS.
+       2. Enable Force HTTPS.
+       3. Verify the app at https://$$cap_appname.$$cap_root_domain/api/health
+       4. Configure your email provider if you did not enter it during installation.
+       5. Configure the Instagram/Meta app and webhook using the OpenReply setup guide.
+       6. Use the generated WEBHOOK_VERIFY_TOKEN for Meta webhook verification.
+
+      Internal services created by this template:
+       - srv-captain--$$cap_appname-db
+       - srv-captain--$$cap_appname-redis
+       - srv-captain--$$cap_appname-worker
+       - srv-captain--$$cap_appname-cron
+
+      Back up the PostgreSQL volume and the generated secrets, especially ENCRYPTION_KEY.
+      The cron process is included intentionally; without it token refresh and scheduled
+      OpenReply maintenance jobs will not run on a non-Vercel deployment.
+
+      Full CapRover notes:
+      https://github.com/TylonHH/openreply/blob/main/docs/deploy-caprover.md
+
+  displayName: OpenReply
+  isOfficial: false
+  description: Self-hosted Instagram comment-to-DM automation with web app, worker, cron, PostgreSQL and Redis.
+  documentation: https://github.com/TylonHH/openreply/blob/main/docs/deploy-caprover.md
