@@ -20,7 +20,7 @@ Legacy campaigns keep their old one-button data and reveal/followcheck postbacks
 
 Image: `ghcr.io/tylonhh/openreply:button-workflows-test` (published only after CI passes).
 
-Update both the web service and the DM worker to the same test image. Run the normal database migration before starting the updated worker; the web image's normal start command already runs migrations. The migration only adds `Automation.openingDmButtons` with an empty-array default and preserves old fields. Keep the existing database backup practice. Rolling back the application leaves this additive column in place; old code cannot execute newly sent workflow buttons.
+Update both the web service and the DM worker to the same test image. Run `npm run db:migrate` with the new image before starting the updated web service and worker. If your deployment already runs migrations as a release/start step, keep that step enabled. The migration only adds `Automation.openingDmButtons` with an empty-array default and preserves old fields. Keep the existing database backup practice. Rolling back the application leaves this additive column in place; old code cannot execute newly sent workflow buttons.
 
 ## Live acceptance test
 

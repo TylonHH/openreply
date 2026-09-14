@@ -1409,6 +1409,17 @@ describe("opening button workflows", () => {
     ]);
     expect(mockSendPrivateReplyWithButton).not.toHaveBeenCalled();
   });
+  it("presents new menus for matching inbound DMs instead of sending the reveal immediately", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([{ ...source, dmTriggerEnabled: true, requireFollow: true }]);
+    await getProcessor()({ name: "process-message", id: "dm-menu", attemptsMade: 0, data: {
+      instagramAccountId: "ig_456", accountConnectionId: "ig_account_row_1", senderId: "commenter_999", messageId: "dm-1", messageText: "GUIDE",
+    } });
+    expect(mockSendOpeningButtons).toHaveBeenCalledWith("decrypted_token", "ig_456", { id: "commenter_999" }, "Choose", [
+      { title: "Get guide", payload: "route:auto_789:guide:target" },
+    ]);
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
+    expect(mockGetUserFollowStatus).not.toHaveBeenCalled();
+  });
   it("starts the chosen target and scopes its lookup", async () => {
     mockPrisma.automation.findFirst.mockResolvedValueOnce(source).mockResolvedValueOnce(target);
     await getProcessor()(createMockPostbackJob(data));
