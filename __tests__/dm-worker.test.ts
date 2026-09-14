@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const {
   mockPrisma,
+  mockSendOpeningButtons,
   mockSendPrivateReply,
   mockSendPrivateReplyWithLinkButton,
   mockSendPrivateReplyWithButton,
@@ -37,6 +38,7 @@ const {
       create: vi.fn(),
     },
   },
+  mockSendOpeningButtons: vi.fn(),
   mockSendPrivateReply: vi.fn(),
   mockSendPrivateReplyWithLinkButton: vi.fn(),
   mockSendPrivateReplyWithButton: vi.fn(),
@@ -57,6 +59,7 @@ vi.mock("@/lib/db/client", () => ({
 }));
 
 vi.mock("@/lib/meta/client", () => ({
+  sendOpeningButtonMessage: mockSendOpeningButtons,
   sendPrivateReply: mockSendPrivateReply,
   sendPrivateReplyWithLinkButton: mockSendPrivateReplyWithLinkButton,
   sendPrivateReplyWithButton: mockSendPrivateReplyWithButton,
@@ -1387,5 +1390,77 @@ describe("durable Zernio postback delivery", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+});
+
+
+describe("opening button workflows", () => {
+  const buttons = [{ id: "guide", label: "Get guide", targetCampaignId: "target" }];
+  const source = { ...mockAutomation, openingDmEnabled: true, openingDmMessage: "Choose", openingDmButtons: buttons,
+    instagramAccount: { ...mockAutomation.instagramAccount, provider: "META" } };
+  const target = { ...mockAutomation, id: "target" };
+  const data = { instagramAccountId: "ig_456", accountConnectionId: "ig_account_row_1", userId: "commenter_999", mid: "tap-1", payload: "route:auto_789:guide:target" };
+  beforeEach(() => { mockSendOpeningButtons.mockReset().mockResolvedValue({ message_id: "opening" }); });
+  it("sends the configured buttons as a private reply", async () => {
+    mockPrisma.automation.findMany.mockResolvedValue([source]);
+    await getProcessor()(createMockJob());
+    expect(mockSendOpeningButtons).toHaveBeenCalledWith("decrypted_token", "ig_456", { comment_id: "comment_555" }, "Choose", [
+      { title: "Get guide", payload: "route:auto_789:guide:target" },
+    ]);
+    expect(mockSendPrivateReplyWithButton).not.toHaveBeenCalled();
+  });
+  it("starts the chosen target and scopes its lookup", async () => {
+    mockPrisma.automation.findFirst.mockResolvedValueOnce(source).mockResolvedValueOnce(target);
+    await getProcessor()(createMockPostbackJob(data));
+    expect(mockSendDirectMessage).toHaveBeenCalled();
+    expect(mockPrisma.automation.findFirst).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      where: { id: "target", isActive: true, instagramAccountId: "ig_account_row_1", workspaceId: "workspace_123" },
+    }));
+    expect(mockPrisma.postbackDelivery.create).toHaveBeenCalledTimes(1);
+  });
+  it("sends a target's opening menu before its reveal or follow-up", async () => {
+    mockPrisma.automation.findFirst.mockResolvedValueOnce(source).mockResolvedValueOnce({ ...target,
+      openingDmEnabled: true, openingDmMessage: "Next choice", openingDmButtonLabel: "Continue", requireFollow: true,
+      openingDmButtons: [{ id: "next", label: "Continue", targetCampaignId: null }], followUpEnabled: true, followUpMessage: "Thanks",
+    });
+    await getProcessor()(createMockPostbackJob(data));
+    expect(mockSendOpeningButtons).toHaveBeenCalledWith("decrypted_token", "ig_456", { id: "commenter_999" }, "Next choice", [{ title: "Continue", payload: "followcheck:target" }]);
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
+    expect(mockQueueAdd).not.toHaveBeenCalled();
+    expect(mockGetUserFollowStatus).not.toHaveBeenCalled();
+  });
+  it("does not route a stale button to a newly configured destination", async () => {
+    mockPrisma.automation.findFirst.mockResolvedValue({ ...source, openingDmButtons: [{ ...buttons[0], targetCampaignId: "changed" }] });
+    await getProcessor()(createMockPostbackJob(data));
+    expect(mockPrisma.automation.findFirst).toHaveBeenCalledTimes(1);
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
+  });
+  it("ignores routes without a connection scope and unavailable source/target campaigns", async () => {
+    const processor = getProcessor();
+    await processor(createMockPostbackJob({ ...data, accountConnectionId: undefined }));
+    expect(mockPrisma.automation.findFirst).not.toHaveBeenCalled();
+    mockPrisma.automation.findFirst.mockResolvedValueOnce(source).mockResolvedValueOnce(null);
+    await processor(createMockPostbackJob(data));
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
+  });
+  it("does not bypass choices through a read fallback", async () => {
+    mockPrisma.automation.findFirst.mockResolvedValue(source);
+    await getProcessor()(createMockPostbackJob({ ...data, payload: "reveal:auto_789", fallback: true }));
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
+    expect(mockReserveWorkspaceDMSend).not.toHaveBeenCalled();
+  });
+  it("does not resend a route when Meta redelivers the same event", async () => {
+    mockPrisma.automation.findFirst.mockResolvedValueOnce(source).mockResolvedValueOnce(target);
+    mockPrisma.postbackDelivery.create.mockRejectedValue({ code: "P2002" });
+    await getProcessor()(createMockPostbackJob(data));
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
+    expect(mockReleaseWorkspaceDMReservation).toHaveBeenCalled();
+  });
+  it("honors a target's follow gate", async () => {
+    mockPrisma.automation.findFirst.mockResolvedValueOnce(source).mockResolvedValueOnce({ ...target, requireFollow: true });
+    mockGetUserFollowStatus.mockResolvedValue(false);
+    await getProcessor()(createMockPostbackJob(data));
+    expect(mockSendDirectMessageWithButton).toHaveBeenCalled();
+    expect(mockSendDirectMessage).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { openingButtonsSchema, readOpeningButtons } from "@/lib/campaigns/opening-buttons";
+import { validateOpeningButtonTargets } from "@/lib/campaigns/opening-button-targets";
 import { z } from "zod";
 import { getCurrentWorkspaceId } from "@/lib/auth";
 import { prisma } from "@/lib/db/client";
@@ -28,6 +30,7 @@ const createAutomationSchema = z
     matchAnyWord: z.boolean().optional().default(false),
     dmTriggerEnabled: z.boolean().optional().default(false),
     dmMessage: z.string().min(1).max(1000),
+    openingDmButtons: openingButtonsSchema.optional().default([]),
     openingDmEnabled: z.boolean().optional().default(false),
     openingDmMessage: z.string().max(1000).optional().nullable(),
     openingDmButtonLabel: z.string().max(64).optional().nullable(),
@@ -76,7 +79,7 @@ const createAutomationSchema = z
     (d) =>
       !d.openingDmEnabled ||
       (Boolean(d.openingDmMessage?.trim()) &&
-        Boolean(d.openingDmButtonLabel?.trim())),
+        (d.openingDmButtons.length > 0 || Boolean(d.openingDmButtonLabel?.trim()))),
     { message: "Opening DM needs a message and a button label", path: ["openingDmMessage"] }
   );
 
@@ -91,6 +94,7 @@ const updateAutomationSchema = z.object({
   matchAnyWord: z.boolean().optional(),
   dmTriggerEnabled: z.boolean().optional(),
   dmMessage: z.string().min(1).max(1000).optional(),
+  openingDmButtons: openingButtonsSchema.optional(),
   openingDmEnabled: z.boolean().optional(),
   openingDmMessage: z.string().max(1000).optional().nullable(),
   openingDmButtonLabel: z.string().max(64).optional().nullable(),
@@ -341,6 +345,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (parsed.data.openingDmEnabled) {
+    const buttons = parsed.data.openingDmButtons;
+    const error = buttons.length && (parsed.data.openingDmMessage?.length ?? 0) > 640
+      ? "Opening DM with buttons must be at most 640 characters"
+      : await validateOpeningButtonTargets({ buttons, workspaceId, instagramAccountId: instagramAccount.id, provider: instagramAccount.provider });
+    if (error) return NextResponse.json({ success: false, error }, { status: 400 });
+  }
+
   const { trackedDestinationUrl, secondaryDestinationUrl, secondaryButtonLabel } =
     parsed.data;
 
@@ -397,11 +409,12 @@ export async function POST(request: NextRequest) {
       dmTriggerEnabled: parsed.data.dmTriggerEnabled,
       dmMessage: parsed.data.dmMessage,
       openingDmEnabled,
+      openingDmButtons: openingDmEnabled ? parsed.data.openingDmButtons : [],
       openingDmMessage: openingDmEnabled
         ? parsed.data.openingDmMessage || null
         : null,
       openingDmButtonLabel: openingDmEnabled
-        ? parsed.data.openingDmButtonLabel || null
+        ? parsed.data.openingDmButtons[0]?.label || parsed.data.openingDmButtonLabel || null
         : null,
       linkButtonLabel: parsed.data.linkButtonLabel || null,
       requireFollow: parsed.data.requireFollow,
@@ -509,6 +522,7 @@ export async function PATCH(request: NextRequest) {
   if (automationData.openingDmEnabled === false) {
     automationData.openingDmMessage = null;
     automationData.openingDmButtonLabel = null;
+    automationData.openingDmButtons = [];
   }
   if (automationData.requireFollow === false) {
     automationData.followPromptMessage = null;
@@ -534,6 +548,19 @@ export async function PATCH(request: NextRequest) {
   if (automationData.publicReplyEnabled === false) {
     automationData.publicReplyMessages = [];
     automationData.publicReplyMessage = null;
+  }
+
+  if (automationData.openingDmButtons?.length) automationData.openingDmButtonLabel = automationData.openingDmButtons[0].label;
+  if (automationData.isActive !== false && (automationData.openingDmEnabled ?? existing.openingDmEnabled)) {
+    const buttons = readOpeningButtons(automationData.openingDmButtons ?? existing.openingDmButtons);
+    const message = automationData.openingDmMessage === undefined ? existing.openingDmMessage : automationData.openingDmMessage;
+    const label = automationData.openingDmButtonLabel === undefined ? existing.openingDmButtonLabel : automationData.openingDmButtonLabel;
+    if (!message?.trim() || (!buttons.length && !label?.trim()) || (buttons.length > 0 && message.length > 640)) {
+      return NextResponse.json({ success: false, error: "Opening DM needs a message (up to 640 characters with button workflows) and a button" }, { status: 400 });
+    }
+    const account = await prisma.instagramAccount.findFirst({ where: { id: existing.instagramAccountId, workspaceId }, select: { provider: true } });
+    const error = await validateOpeningButtonTargets({ buttons, workspaceId, instagramAccountId: existing.instagramAccountId, sourceId: existing.id, provider: account?.provider ?? "" });
+    if (error) return NextResponse.json({ success: false, error }, { status: 400 });
   }
 
   const updated = await prisma.automation.update({

@@ -1,3 +1,4 @@
+import { readOpeningButtons } from "./opening-buttons";
 import { prisma } from "@/lib/db/client";
 import { generateReportShareSlug } from "@/lib/reports/share";
 import { generateTrackedLinkSlug } from "@/lib/tracking/server";
@@ -54,6 +55,7 @@ export async function duplicateCampaign({
   return prisma.automation.create({
     data: {
       ...settings,
+      openingDmButtons: readOpeningButtons(settings.openingDmButtons),
       // The rest of the row identifies the original rather than describing it,
       // so the copy is given its own. Passing `undefined` to Prisma leaves a
       // field out of the insert, which is what hands back the column default:

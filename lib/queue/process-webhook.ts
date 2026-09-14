@@ -1,3 +1,4 @@
+import { requiresButtonChoice } from "@/lib/campaigns/opening-buttons";
 import { prisma } from '@/lib/db/client';
 import { getDMQueue, MESSAGE_JOB_NAME, POSTBACK_JOB_NAME } from '@/lib/queue/client';
 import { parseCommentEvents, parseMessageEvents, parsePostbackEvents, parseReadEvents } from '@/lib/meta/webhook';
@@ -152,6 +153,7 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
           automation: {
             select: {
               id: true,
+              openingDmButtons: true,
             },
           },
         },
@@ -160,6 +162,7 @@ export async function processInstagramWebhook({ payload: incoming, provider, wor
       const scheduledAutomationIds = new Set<string>();
       for (const log of openingLogs) {
         const automation = log.automation;
+        if (requiresButtonChoice(automation.openingDmButtons)) continue;
         if (scheduledAutomationIds.has(automation.id)) continue;
         scheduledAutomationIds.add(automation.id);
 

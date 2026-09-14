@@ -1,3 +1,5 @@
+import { buildOpeningButtons, parseCampaignRoute, readOpeningButtons, requiresButtonChoice } from "@/lib/campaigns/opening-buttons";
+import { sendOpeningButtons } from "@/lib/instagram/opening-buttons";
 import { createHash } from "node:crypto";
 import { UnrecoverableError, Worker, type Job } from "bullmq";
 import {
@@ -580,7 +582,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
     const useOpeningDm =
       automation.openingDmEnabled &&
       Boolean(automation.openingDmMessage) &&
-      Boolean(automation.openingDmButtonLabel);
+      (Boolean(automation.openingDmButtonLabel) || readOpeningButtons(automation.openingDmButtons).length > 0);
 
     // Follow-gating: the link is revealed only after a follow. When an opening
     // DM is enabled it comes FIRST, and its button routes into the follow check
@@ -606,7 +608,11 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           commenterName,
           trackedLinks: [],
         });
-        await sendPrivateReplyWithButton({
+        if (readOpeningButtons(automation.openingDmButtons).length) {
+          await sendOpeningButtons({ context: accessToken, instagramAccountId: automation.instagramAccount.instagramId,
+            recipient: { comment_id: commentId }, text: openingText, buttons: buildOpeningButtons(automation) });
+        } else {
+          await sendPrivateReplyWithButton({
           context: accessToken,
           instagramAccountId: automation.instagramAccount.instagramId,
           commentId: commentId,
@@ -617,6 +623,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
             : `reveal:${automation.id}`,
           postId: mediaId,
         });
+        }
       } else if (sendFollowPrompt) {
         const promptText = renderMessageWithoutLink({
           message:
@@ -789,14 +796,28 @@ async function sendPostbackOnce({
 async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
   const { instagramAccountId, userId, payload, fallback } = job.data;
 
+  const route = parseCampaignRoute(payload);
   const isFollowCheck = payload.startsWith("followcheck:");
-  if (!isFollowCheck && !payload.startsWith("reveal:")) return;
-  const automationId = payload.slice(
-    isFollowCheck ? "followcheck:".length : "reveal:".length,
-  );
+  if (!route && !isFollowCheck && !payload.startsWith("reveal:")) return;
+  let routeScope: { workspaceId: string; instagramAccountId: string } | undefined;
+  if (route) {
+    if (fallback || !job.data.accountConnectionId || route.sourceId === route.targetId) return;
+    const source = await prisma.automation.findFirst({
+      where: { id: route.sourceId, isActive: true, instagramAccountId: job.data.accountConnectionId },
+      include: { instagramAccount: true },
+    });
+    if (!source || !source.openingDmEnabled || source.instagramAccount.provider !== "META" ||
+        source.instagramAccount.instagramId !== instagramAccountId ||
+        !readOpeningButtons(source.openingDmButtons).some(b => b.id === route.buttonId && b.targetCampaignId === route.targetId)) {
+      console.warn("[DM Worker] Opening workflow source or button is unavailable", { sourceId: route.sourceId, buttonId: route.buttonId });
+      return;
+    }
+    routeScope = { workspaceId: source.workspaceId, instagramAccountId: source.instagramAccountId };
+  }
+  const automationId = route?.targetId ?? payload.slice(isFollowCheck ? "followcheck:".length : "reveal:".length);
 
   const automation = await prisma.automation.findFirst({
-    where: { id: automationId, isActive: true, ...connectionScope(job.data) },
+    where: { id: automationId, isActive: true, ...connectionScope(job.data), ...routeScope },
     include: {
       instagramAccount: true,
       workspace: true,
@@ -812,12 +833,17 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
     automation.instagramAccount.instagramId !== instagramAccountId ||
     !hasInstagramCredentials(automation.instagramAccount)
   ) {
+    if (route) console.warn("[DM Worker] Opening workflow target is unavailable", { targetId: route.targetId });
     return;
   }
 
+  if (fallback && requiresButtonChoice(automation.openingDmButtons)) return;
+  const openTarget = Boolean(route && automation.openingDmEnabled && automation.openingDmMessage &&
+    (automation.openingDmButtonLabel || readOpeningButtons(automation.openingDmButtons).length));
+
   // Duplicate sends are enabled: every button tap re-sends the reveal
   // instead of only firing once per person.
-  const dedupeId = `reveal:${userId}`;
+  const dedupeId = route ? `workflow:${createHash("sha256").update(JSON.stringify([userId, payload, job.data.mid ?? job.id])).digest("hex")}` : `reveal:${userId}`;
 
   if (fallback) {
     const existingReveal = await prisma.dmLog.findUnique({
@@ -837,7 +863,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
 
   // Personalize {username} from the opening DM log for this user, if present.
   const openingLog = await prisma.dmLog.findFirst({
-    where: { automationId: automation.id, commenterId: userId },
+    where: { automationId: route?.sourceId ?? automation.id, commenterId: userId },
     select: { commenterName: true },
   });
   const commenterName = openingLog?.commenterName ?? null;
@@ -853,7 +879,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
   }
 
   const operationId =
-    accessToken.provider === "ZERNIO"
+    (accessToken.provider === "ZERNIO" || route)
       ? createHash("sha256")
           .update(
             JSON.stringify([
@@ -872,7 +898,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
   // be bypassable by just reading the DM and waiting. Following, or
   // unverifiable (null), falls through and delivers the link — fail-open so a
   // real follower is never trapped.
-  if ((isFollowCheck || fallback) && automation.requireFollow) {
+  if (!openTarget && (route || isFollowCheck || fallback) && automation.requireFollow) {
     const follows = await getUserFollowStatus({
       context: accessToken,
       recipientId: userId,
@@ -937,8 +963,11 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
   try {
     const delivered = await sendPostbackOnce({
       operationId,
-      send: () =>
-        sendRevealDirectMessage({
+      send: () => openTarget
+        ? sendOpeningButtons({ context: accessToken, instagramAccountId: automation.instagramAccount.instagramId,
+            recipient: { id: userId }, text: renderMessageWithoutLink({ message: automation.openingDmMessage!, commenterName }),
+            buttons: buildOpeningButtons(automation) })
+        : sendRevealDirectMessage({
           accessToken: accessToken,
           automation: automation,
           userId: userId,
@@ -957,7 +986,7 @@ async function processPostback(job: Job<ProcessPostbackJob>): Promise<void> {
     // short thank-you. It is scheduled as its own delayed job so it can go out
     // some minutes later (followUpDelayMinutes) rather than immediately. The
     // deterministic job id dedupes repeat button taps to one follow-up per user.
-    if (automation.followUpEnabled && automation.followUpMessage?.trim()) {
+    if (!openTarget && automation.followUpEnabled && automation.followUpMessage?.trim()) {
       const delayMs =
         Math.max(0, automation.followUpDelayMinutes ?? 0) * 60_000;
       await getDMQueue().add(
@@ -1230,8 +1259,9 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
     // postback path's fail-open one. Fail-open is only safe after a tap, where
     // the user has already claimed to follow; here it would hand the link to
     // anyone whose status the API happens not to resolve.
+    const useOpeningDm = Boolean(automation.openingDmEnabled && automation.openingDmMessage && readOpeningButtons(automation.openingDmButtons).length);
     let sendFollowPrompt = false;
-    if (automation.requireFollow) {
+    if (automation.requireFollow && !useOpeningDm) {
       const follows = await getUserFollowStatus({
         context: accessToken,
         recipientId: senderId,
@@ -1265,7 +1295,11 @@ async function processMessage(job: Job<ProcessMessageJob>): Promise<void> {
     }
 
     try {
-      if (sendFollowPrompt) {
+      if (useOpeningDm) {
+        await sendOpeningButtons({ context: accessToken, instagramAccountId: automation.instagramAccount.instagramId,
+          recipient: { id: senderId }, text: renderMessageWithoutLink({ message: automation.openingDmMessage!, commenterName }),
+          buttons: buildOpeningButtons(automation) });
+      } else if (sendFollowPrompt) {
         const promptText = renderMessageWithoutLink({
           message:
             automation.followPromptMessage ||

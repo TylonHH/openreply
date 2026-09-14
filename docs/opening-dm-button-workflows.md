@@ -1,90 +1,39 @@
-# Multiple opening-DM buttons and campaign transitions
+# Opening DM buttons and campaign workflows
 
-Status: planned; this branch prepares the feature, it does not implement it yet.
+Test feature for direct Meta connections. The branch includes the inbox recovery fix from main.
 
-## Goal
+## Configure
 
-Offer two or three choices directly in an opening DM. Each button either
-continues the current campaign or explicitly starts another campaign. Labels
-are presentation text, not implicit keyword triggers.
+- Enable an opening DM and write its message (up to 640 characters).
+- Give button 1 a label (up to 20 characters). Choose **Continue this campaign** or an active campaign from the same Instagram account.
+- The next optional editor field appears after the previous button is complete. Configure up to three buttons. Blank optional buttons are not saved.
+- All configured choices appear together in the sent Instagram DM. This is progressive configuration, not a timed sequence of buttons.
+- Click the buttons in the phone preview to inspect their action. It names a selected target rather than pretending to preview that target's contents.
 
-Meta documents a maximum of three buttons in a button template:
-https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/messaging-api/button-template
+A workflow button starts the selected campaign's opening DM when enabled. Otherwise it applies that campaign's follow gate and sends its reveal. Another transition requires another real click. It does not simulate a keyword or broadcast to other campaigns. New configured menus also work for DM keyword triggers.
 
-Quick Replies are a different message type, not a way to silently raise this
-template's limit. Validate the actual private-reply/first-contact path with a
-test Instagram account before considering the feature production-ready.
+Targets are validated on save and again on click: active, same workspace, same Instagram connection, and still assigned to that button. Changed/deleted buttons and unavailable targets do not send; the worker logs an unavailable-route warning. Choosing the current campaign uses the Continue action instead of a self-route. Replayed route events use durable delivery claims. Uncertain delivery failures are not automatically resent.
 
-## Initial behavior
+Legacy campaigns keep their old one-button data and reveal/followcheck postbacks. Zernio retains its existing single-button behavior; multi-button workflows are not enabled for it. Multiple choices and campaign routes disable the speculative read fallback so a read cannot select a workflow on the user's behalf.
 
-- Allow one to three buttons in the opening-DM editor, each with its own label
-  and action: Continue this campaign / Start another campaign.
-- Keep the current single-button behavior and existing campaigns compatible.
-- Continue this campaign retains the existing reveal/follow-check behavior.
-- Start another campaign enters the target campaign's opening DM if enabled;
-  otherwise apply its follow gate and reveal behavior.
-- Each additional transition requires a real user click; do not recursively
-  execute campaigns without user input.
-- Show the target campaign explicitly in the editor and preview.
-- Restrict target selection to active campaigns in the same workspace and
-  connected Instagram account. Revalidate this at click time.
-- Reject targeting the source campaign via the start-campaign action; use
-  Continue this campaign instead.
-- If a target has been removed or disabled, record a clear failure without
-  sending a different campaign or guessing an alternative recipient.
-- Do not change webhook authentication, messaging-window rules or outbound
-  retry/deduplication protections.
+## Deployment for testing
 
-## Existing integration points to inspect before implementing
+Image: `ghcr.io/tylonhh/openreply:button-workflows-test` (published only after CI passes).
 
-- Campaign persistence, API schemas, editor and preview currently expose
-  openingDmEnabled, openingDmMessage and openingDmButtonLabel.
-- lib/meta/client.ts constructs a single postback button for opening DMs.
-- lib/instagram/send-messages.ts abstracts direct Meta and Zernio sends.
-- lib/queue/dm-worker.ts emits reveal:<automationId> or
-  followcheck:<automationId>. processPostback only recognizes those actions.
-- lib/meta/webhook.ts parses postbacks separately from inbound keyword DMs.
-- Existing delivery tracking and deduplication must also cover transitions.
+Update both the web service and the DM worker to the same test image. Run the normal database migration before starting the updated worker; the web image's normal start command already runs migrations. The migration only adds `Automation.openingDmButtons` with an empty-array default and preserves old fields. Keep the existing database backup practice. Rolling back the application leaves this additive column in place; old code cannot execute newly sent workflow buttons.
 
-Read current repository instructions and exact code before editing. Use an
-additive migration if button definitions require a new field/table. Preserve
-existing single-button data and legacy postbacks from already sent messages.
-Never allow raw user-supplied postback payloads to select unvalidated campaigns.
+## Live acceptance test
 
-## Implementation tasks
+1. Create/enable a target campaign for the same account, preferably with its own opening DM and a Continue button.
+2. Create a source campaign with an opening DM. Check that only button 1 initially appears; filling it reveals button 2; filling button 2 reveals button 3.
+3. Set one button to Continue and another to the target from the list. Save, reopen, and confirm both labels and destinations persist. Test three buttons as well.
+4. Trigger the source from a real Instagram comment. Confirm all configured buttons appear together. Continue should deliver the source reveal; the target button should display the target's opener, with no source reveal or premature follow-up.
+5. Click the target's Continue button and check its follow requirement/reveal. Reading the source without clicking must not automatically start a branch.
+6. Pause the target and click an already sent target button: no campaign should be sent, and the worker should log an unavailable target. Restore the target afterward.
+7. Test a DM keyword trigger and an unchanged legacy campaign. Confirm the inbox recovery still works.
 
-1. Define validated button actions and backward-compatible serialization.
-   Enforce one to three buttons and Meta's documented title/payload limits.
-2. Add persistence and migration, preserving the legacy single-button value
-   when no new button configuration exists.
-3. Extend create/edit/duplicate campaign APIs and the editor, including an
-   accurate multi-button preview and eligible target choices.
-4. Extend the provider abstraction and Meta private/direct message templates.
-   Inspect Zernio capability before enabling this feature for that provider;
-   unsupported actions must produce a clear validation error.
-5. Route signed postback events to the configured action. Reuse existing
-   target-campaign follow gates, delivery rules, tracking and deduplication.
-   Resolve source and target in the current account/workspace scope.
-6. Test validation, compatibility, multiple choices, target routing, cross-
-   workspace/account rejection, disabled targets and duplicate event delivery.
-7. Run typecheck, lint, tests and production build. Prepare an isolated test
-   image only when implementation is ready; keep main/latest untouched.
-8. Live-test two and three buttons from a real comment-triggered private reply,
-   including a transition to another campaign and its next button.
+## Automated coverage
 
-## Acceptance criteria
+Unit/integration tests cover schema limits, stable route payloads, legacy buttons, sequential editor fields, provider request bodies, target validation, target menus/follow gates, stale/unavailable routes, read fallback, and duplicate webhook delivery. CI checks types, lint, tests and production build. A PostgreSQL 16 migration test upgrades a legacy campaign and verifies that its old data survives and multiple buttons persist.
 
-- Existing campaigns and previously sent buttons still work.
-- A new opening DM displays the configured two or three buttons.
-- Each button performs exactly its selected action.
-- Target campaigns can present a subsequent choice without an automatic loop.
-- One repeated webhook event does not duplicate delivery.
-- Target authorization is enforced server-side, not just in the UI.
-- Failures and provider limitations are understandable in the editor/logs.
-
-## Branch context
-
-Created from TylonHH/openreply main at 3ca2398be85622a498773de2b8433a182ee254cc.
-The inbox recovery PR is separate. At branch creation, the recovery fix had
-not yet been merged into the fork's main. Integrate the updated main before
-building a combined deployment so the validated inbox fix is retained.
+Live Instagram delivery and final appearance must still be verified on the connected test account; mocked API tests cannot confirm Meta's live response.

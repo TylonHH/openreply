@@ -10,6 +10,8 @@
  * the identical frame so switching tabs never resizes the phone.
  */
 
+import { useState } from "react";
+
 export type PreviewTab = "post" | "comments" | "dm" | "dmTrigger";
 
 interface CampaignPreviewProps {
@@ -28,6 +30,7 @@ interface CampaignPreviewProps {
   openingDmEnabled: boolean;
   openingDmMessage: string;
   openingDmButtonLabel: string;
+  openingButtons?: { label: string; targetName: string | null }[];
   revealMessage: string;
   hasLink: boolean;
   linkButtonLabel: string;
@@ -310,6 +313,7 @@ function DmScreen({
   openingDmEnabled,
   openingDmMessage,
   openingDmButtonLabel,
+  openingButtons,
   revealMessage,
   hasLink,
   linkButtonLabel,
@@ -329,6 +333,7 @@ function DmScreen({
   openingDmEnabled: boolean;
   openingDmMessage: string;
   openingDmButtonLabel: string;
+  openingButtons?: { label: string; targetName: string | null }[];
   revealMessage: string;
   hasLink: boolean;
   linkButtonLabel: string;
@@ -344,6 +349,9 @@ function DmScreen({
   // Present on the keyword-trigger thread: the DM the user sends to start it.
   inboundMessage?: string;
 }) {
+  const [selectedButton, setSelectedButton] = useState(0);
+  const chosen = openingButtons?.[selectedButton] ?? openingButtons?.[0];
+  const targetName = openingDmEnabled ? chosen?.targetName : null;
   return (
     <div className="flex h-full flex-col text-white">
       <StatusBar />
@@ -371,18 +379,21 @@ function DmScreen({
               <Avatar url={avatarUrl} size={24} />
               <div className="max-w-[80%] overflow-hidden rounded-2xl rounded-bl-md bg-zinc-800">
                 <p className="whitespace-pre-wrap px-3 py-2 text-sm">{openingDmMessage || "Your opening message…"}</p>
-                <div className="mx-1.5 mb-1.5 rounded-xl bg-zinc-700 px-4 py-1.5 text-center text-sm font-medium text-white">
-                  {openingDmButtonLabel || "Button label"}
-                </div>
+                {(openingButtons?.length ? openingButtons : [{ label: openingDmButtonLabel || "Button label", targetName: null }]).map((button, index) => (
+                  <button type="button" key={index} onClick={() => setSelectedButton(index)}
+                    className="mx-1.5 mb-1.5 block w-[calc(100%-0.75rem)] rounded-xl bg-zinc-700 px-4 py-1.5 text-center text-sm font-medium text-white hover:bg-zinc-600">{button.label}</button>
+                ))}
               </div>
             </div>
             <div className="flex justify-end">
               <div className="rounded-2xl rounded-br-md bg-accent px-3 py-2 text-sm">
-                {openingDmButtonLabel || "Button label"}
+                {chosen?.label || openingDmButtonLabel || "Button label"}
               </div>
             </div>
+            {targetName && <p className="text-center text-xs text-zinc-400">Starts campaign: {targetName}</p>}
           </>
         )}
+        {!targetName && <>
         {requireFollow && (
           <>
             <div className="flex items-end gap-2">
@@ -459,6 +470,7 @@ function DmScreen({
             </div>
           </>
         )}
+        </>}
       </div>
 
       <div className="flex items-center gap-2 px-3 py-3">
@@ -516,6 +528,7 @@ export default function CampaignPreview(props: CampaignPreviewProps) {
             openingDmEnabled={props.openingDmEnabled}
             openingDmMessage={props.openingDmMessage}
             openingDmButtonLabel={props.openingDmButtonLabel}
+            openingButtons={props.openingButtons}
             revealMessage={props.revealMessage}
             hasLink={props.hasLink}
             linkButtonLabel={props.linkButtonLabel}
@@ -534,10 +547,10 @@ export default function CampaignPreview(props: CampaignPreviewProps) {
           <DmScreen
             username={props.username}
             avatarUrl={props.avatarUrl}
-            // The user opened the conversation, so no opening DM is sent.
-            openingDmEnabled={false}
-            openingDmMessage=""
-            openingDmButtonLabel=""
+            openingDmEnabled={props.openingDmEnabled && Boolean(props.openingButtons?.length)}
+            openingDmMessage={props.openingDmMessage}
+            openingDmButtonLabel={props.openingDmButtonLabel}
+            openingButtons={props.openingButtons}
             revealMessage={props.revealMessage}
             hasLink={props.hasLink}
             linkButtonLabel={props.linkButtonLabel}
