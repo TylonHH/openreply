@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import CampaignPreview, { type PreviewTab } from "@/components/campaign-preview";
+import { readOpeningButtons } from "@/lib/campaigns/opening-buttons";
 
 interface Campaign {
   id: string;
@@ -26,6 +27,7 @@ interface Campaign {
   dmMessage: string;
   openingDmEnabled: boolean;
   openingDmMessage: string | null;
+  openingDmButtons?: unknown;
   openingDmButtonLabel: string | null;
   linkButtonLabel: string | null;
   requireFollow: boolean;
@@ -150,6 +152,7 @@ export default function CampaignDetailPage() {
         : [];
   const hasLink = Boolean(campaign.trackedLinks?.[0]?.destinationUrl);
   const hasSecondLink = Boolean(campaign.trackedLinks?.[1]?.destinationUrl);
+  const openingButtons = readOpeningButtons(campaign.openingDmButtons);
 
   const trigger = campaign.matchAnyPost
     ? "Any post or reel"
@@ -231,7 +234,16 @@ export default function CampaignDetailPage() {
         {campaign.openingDmEnabled && (
           <Summary title="They will get an opening DM">
             <FieldBox>{campaign.openingDmMessage || "Opening message"}</FieldBox>
-            <FieldBox>{campaign.openingDmButtonLabel || "Button"}</FieldBox>
+            {openingButtons.length > 0 ? (
+              openingButtons.map((button) => (
+                <FieldBox key={button.id}>
+                  {button.label}
+                  {button.targetCampaignId ? " → another campaign" : ""}
+                </FieldBox>
+              ))
+            ) : (
+              <FieldBox>{campaign.openingDmButtonLabel || "Button"}</FieldBox>
+            )}
           </Summary>
         )}
 
@@ -352,6 +364,10 @@ export default function CampaignDetailPage() {
             openingDmEnabled={campaign.openingDmEnabled}
             openingDmMessage={campaign.openingDmMessage ?? ""}
             openingDmButtonLabel={campaign.openingDmButtonLabel ?? ""}
+            openingButtons={openingButtons.map((button) => ({
+              label: button.label,
+              targetName: button.targetCampaignId ? "another campaign" : null,
+            }))}
             revealMessage={campaign.dmMessage}
             hasLink={hasLink}
             linkButtonLabel={campaign.linkButtonLabel ?? "Open link"}
