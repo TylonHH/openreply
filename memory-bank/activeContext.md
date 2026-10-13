@@ -8,6 +8,8 @@
 - The web app, worker, PostgreSQL and Redis are healthy. Callback verification at `https://openreply.caprover.drrene.de/api/webhook` returns HTTP 200 and the expected challenge without redirect.
 - The database contained zero `WebhookEvent` rows and zero reveal logs at diagnosis. Comment polling explains the opening DMs. App-level webhook configuration remains unverified; an app-subscription GET using the configured Instagram app credentials was rejected. Asked the operator to confirm the callback, Live mode and `messaging_postbacks` in Meta's dashboard.
 - Permanent source fix includes a subscription regression test and setup instructions for both subscription levels and existing connections. Live button-to-reveal acceptance still requires a real Instagram tap after app-level configuration is confirmed.
+- The operator confirmed that the Meta callback currently points to n8n. OpenReply needs event forwarding from that callback or a separate Meta app. Forwarding must preserve the exact request body and `x-hub-signature-256` header for signature verification. The n8n instance/workflow has not been identified or changed.
+- Permanent fix published in draft PR https://github.com/TylonHH/openreply/pull/4, targeting the existing feature branch; commit `9d55197`. Production build passed.
 
 ## Maintenance context
 
