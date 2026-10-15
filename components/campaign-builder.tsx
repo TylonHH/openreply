@@ -12,6 +12,8 @@
  * follow / email / follow-up steps arrive in later turns.
  */
 
+import OpeningDmButtons, { type WorkflowOption } from "@/components/opening-dm-buttons";
+import { readOpeningButtons, type OpeningButton } from "@/lib/campaigns/opening-buttons";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import AccountSelect, { type AccountOption } from "@/components/account-select";
@@ -38,6 +40,7 @@ interface LoadedCampaign {
   matchAnyWord: boolean;
   dmTriggerEnabled: boolean;
   dmMessage: string;
+  openingDmButtons?: unknown;
   openingDmEnabled: boolean;
   openingDmMessage: string | null;
   openingDmButtonLabel: string | null;
@@ -164,7 +167,24 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
 
   const [openingDmEnabled, setOpeningDmEnabled] = useState(false);
   const [openingDmMessage, setOpeningDmMessage] = useState("");
-  const [openingDmButtonLabel, setOpeningDmButtonLabel] = useState("");
+  const [openingButtons, setOpeningButtons] = useState<OpeningButton[]>([]);
+  const openingDmButtonLabel = openingButtons[0]?.label ?? "";
+  const [workflowOptions, setWorkflowOptions] = useState<{ accountId: string; supported: boolean; campaigns: WorkflowOption[] } | null>(null);
+  const [workflowError, setWorkflowError] = useState(false);
+  const workflowsReady = workflowOptions?.accountId === selectedAccountId;
+  const workflowsSupported = workflowsReady && workflowOptions.supported;
+  const workflows = workflowsReady ? workflowOptions.campaigns.filter(w => w.id !== campaignId) : [];
+  useEffect(() => {
+    if (!selectedAccountId) return;
+    let cancelled = false;
+    fetch(`/api/automations/workflow-options?instagramAccountId=${encodeURIComponent(selectedAccountId)}`)
+      .then(async response => {
+        if (!response.ok) throw new Error("Could not load workflows");
+        const result = await response.json();
+        if (!cancelled) { setWorkflowOptions({ accountId: selectedAccountId, ...result.data }); setWorkflowError(false); }
+      }).catch(() => { if (!cancelled) { setWorkflowOptions(null); setWorkflowError(true); } });
+    return () => { cancelled = true; };
+  }, [selectedAccountId]);
 
   const [dmMessage, setDmMessage] = useState("");
   const [linkOpen, setLinkOpen] = useState(false);
@@ -269,7 +289,8 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         );
         setOpeningDmEnabled(c.openingDmEnabled);
         setOpeningDmMessage(c.openingDmMessage ?? "");
-        setOpeningDmButtonLabel(c.openingDmButtonLabel ?? "");
+        const savedButtons = readOpeningButtons(c.openingDmButtons);
+        setOpeningButtons(savedButtons.length ? savedButtons : [{ id: "button-1", label: c.openingDmButtonLabel ?? "", targetCampaignId: null }]);
         setDmMessage(c.dmMessage);
         setLinkButtonLabel(c.linkButtonLabel ?? "Open link");
         setIsActive(c.isActive);
@@ -335,9 +356,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
     const hasOpening = Boolean(row.openingDmMessage);
     setOpeningDmEnabled(hasOpening);
     setOpeningDmMessage(row.openingDmMessage ?? "");
-    setOpeningDmButtonLabel(
-      row.openingDmButtonLabel || (hasOpening ? "Send link" : "")
-    );
+    setOpeningButtons([{ id: "button-1", label: row.openingDmButtonLabel || (hasOpening ? "Send link" : ""), targetCampaignId: null }]);
     const link = row.trackedUrl ?? "";
     setTrackedDestinationUrl(link);
     setLinkOpen(Boolean(link));
@@ -395,6 +414,14 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
     if (openingDmEnabled && (!openingDmMessage.trim() || !openingDmButtonLabel.trim()))
       return setError("Your opening DM needs a message and a button label.");
 
+    const configuredButtons = openingButtons.filter(b => b.label.trim() || b.targetCampaignId).map(b => ({ ...b, label: b.label.trim() }));
+    if (openingDmEnabled) {
+      if (!workflowsReady) return setError("Wait for workflows to load, or reload the page if loading failed.");
+      if (workflowsSupported && (openingDmMessage.length > 640 || configuredButtons.some(b => !b.label || b.label.length > 20 || (b.targetCampaignId && !workflows.some(w => w.id === b.targetCampaignId)))))
+        return setError("Complete each button, choose an available workflow, and keep the opening message within 640 characters.");
+      if (!workflowsSupported && (configuredButtons.length > 1 || configuredButtons.some(b => b.targetCampaignId)))
+        return setError("Button workflows require a direct Meta connection.");
+    }
     setSaving(true);
 
     const payload = {
@@ -409,6 +436,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       dmTriggerEnabled,
       dmMessage,
       openingDmEnabled,
+      openingDmButtons: openingDmEnabled && workflowsSupported ? configuredButtons : [],
       openingDmMessage: openingDmEnabled ? openingDmMessage : null,
       openingDmButtonLabel: openingDmEnabled ? openingDmButtonLabel : null,
       publicReplyEnabled,
@@ -815,15 +843,15 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
                   placeholder="Hey there! I'm so happy you're here 😊"
                   rows={3}
                   className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none resize-none"
-                  maxLength={1000}
+                  maxLength={workflowsSupported ? 640 : 1000}
                 />
-                <input
-                  value={openingDmButtonLabel}
-                  onChange={(e) => setOpeningDmButtonLabel(e.target.value)}
-                  placeholder="Send me the link"
-                  className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
-                  maxLength={64}
-                />
+                {!workflowsReady ? <p className="text-xs text-muted">{workflowError ? "Could not load workflows. Please reload the page." : "Loading workflows…"}</p> : workflowsSupported ? (
+                  <OpeningDmButtons buttons={openingButtons} onChange={setOpeningButtons} workflows={workflows} />
+                ) : (
+                  <input value={openingDmButtonLabel} onChange={e => setOpeningButtons([{ id: "button-1", label: e.target.value, targetCampaignId: null }])}
+                    placeholder="Send me the link" maxLength={64}
+                    className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm" />
+                )}
               </div>
             )}
           </div>
@@ -999,6 +1027,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
             openingDmEnabled={openingDmEnabled}
             openingDmMessage={openingDmMessage}
             openingDmButtonLabel={openingDmButtonLabel}
+            openingButtons={openingButtons.filter(b => b.label.trim()).map(b => ({ label: b.label, targetName: b.targetCampaignId ? workflows.find(w => w.id === b.targetCampaignId)?.name ?? "Selected campaign" : null }))}
             revealMessage={dmMessage}
             hasLink={Boolean(trackedDestinationUrl.trim())}
             linkButtonLabel={linkButtonLabel || "Open link"}

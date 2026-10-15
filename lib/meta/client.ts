@@ -825,7 +825,7 @@ export async function subscribeInstagramAccountToWebhooks(
         Authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({
-        subscribed_fields: ["comments", "messages"],
+        subscribed_fields: ["comments", "messages", "messaging_postbacks"],
       }),
     }
   );
@@ -838,5 +838,22 @@ export async function debugToken(inputToken: string, accessToken: string) {
   url.searchParams.set("input_token", inputToken);
   url.searchParams.set("access_token", accessToken);
   const response = await fetch(url.toString());
+  return handleResponse(response);
+}
+
+export async function sendOpeningButtonMessage(
+  accessToken: string, instagramAccountId: string, recipient: { id: string } | { comment_id: string },
+  text: string, buttons: { title: string; payload: string }[],
+): Promise<{ message_id: string }> {
+  if (!text.trim() || buttons.length < 1 || buttons.length > 3 || buttons.some(b => !b.title.trim() || b.title.length > 20 || !b.payload || b.payload.length > 1000)) {
+    throw new Error("Invalid opening DM buttons");
+  }
+  const response = await fetch(`${instagramGraphBase()}/${instagramAccountId}/messages`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ recipient, message: { attachment: { type: "template", payload: {
+      template_type: "button", text: text.slice(0, 640), buttons: buttons.map(b => ({ type: "postback", ...b })),
+    } } } }),
+  });
   return handleResponse(response);
 }

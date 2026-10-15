@@ -188,6 +188,7 @@ model Automation {
   dmMessage      String
   openingDmEnabled     Boolean @default(false)
   openingDmMessage     String?
+  openingDmButtons Json @default("[]")
   openingDmButtonLabel String?
   linkButtonLabel      String?
   requireFollow           Boolean @default(false)

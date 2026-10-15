@@ -201,9 +201,9 @@ Still in the Instagram product, find the Configure webhooks step.
 - Callback URL: `https://your-app.vercel.app/api/webhook`
 - Verify token: the value of `WEBHOOK_VERIFY_TOKEN` from your environment
 - Click Verify and save. It should succeed immediately, because the app answers Meta's verification challenge. If the button is greyed out, click into the verify-token field and paste the token again; editing the callback URL often clears it.
-- Subscribe to the `comments` field, and to `messages` as well.
+- Subscribe to `comments`, `messages`, and `messaging_postbacks`.
 
-Both fields matter. `comments` carries comment-to-DM, which is what most people come here for. `messages` carries inbound DMs and Story replies, which is what a campaign's "also reply when someone DMs these words" toggle runs on. Subscribe to `comments` alone and that toggle looks enabled but never fires, because the events it needs are never delivered.
+All three fields matter. `comments` carries comment-to-DM. `messages` carries inbound DMs and Story replies. `messaging_postbacks` carries opening-DM and follow-gate button clicks; without it the opening DM can arrive while clicking its button never sends the next message. Enable these fields in the Meta dashboard and on the Instagram account subscription. OpenReply subscribes the account during connection. After upgrading an older deployment, reconnect existing Meta accounts to refresh their account subscriptions; deploying new code alone does not update them.
 
 To test delivery without a real comment, click Test next to `comments`, then click Send to My Server. This is a two-step control. Clicking Test only previews the sample payload; the second button is what actually POSTs it to your endpoint. After sending, a row should appear in your `WebhookEvent` table.
 
