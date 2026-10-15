@@ -1,6 +1,6 @@
 # Opening DM buttons and campaign workflows
 
-Test feature for direct Meta connections. The branch includes the inbox recovery fix from main.
+Opening DM workflows for direct Meta connections, included in this fork's `main` image alongside inbox recovery and the upstream delivery fixes.
 
 ## Configure
 
@@ -14,13 +14,13 @@ A workflow button starts the selected campaign's opening DM when enabled. Otherw
 
 Targets are validated on save and again on click: active, same workspace, same Instagram connection, and still assigned to that button. Changed/deleted buttons and unavailable targets do not send; the worker logs an unavailable-route warning. Choosing the current campaign uses the Continue action instead of a self-route. Replayed route events use durable delivery claims. Uncertain delivery failures are not automatically resent.
 
-Legacy campaigns keep their old one-button data and reveal/followcheck postbacks. Zernio retains its existing single-button behavior; multi-button workflows are not enabled for it. Multiple choices and campaign routes disable the speculative read fallback so a read cannot select a workflow on the user's behalf.
+Legacy campaigns keep their old one-button data and reveal/followcheck postbacks. New Continue buttons append `:open` to distinguish an opening-menu tap from a follow prompt's acknowledgement. Zernio retains its existing single-button behavior; multi-button workflows are not enabled for it. Multiple choices and campaign routes disable the speculative read fallback so a read cannot select a workflow on the user's behalf.
 
-## Deployment for testing
+## Deployment
 
-Image: `ghcr.io/tylonhh/openreply:button-workflows-test` (published only after CI passes).
+Image: `ghcr.io/tylonhh/openreply:latest`. Prefer the corresponding immutable `sha-*` tag for a reproducible deployment. The older `button-workflows-test` tag is a historical test build.
 
-Update both the web service and the DM worker to the same test image. Run `npm run db:migrate` with the new image before starting the updated web service and worker. If your deployment already runs migrations as a release/start step, keep that step enabled. The migration only adds `Automation.openingDmButtons` with an empty-array default and preserves old fields. Keep the existing database backup practice. Rolling back the application leaves this additive column in place; old code cannot execute newly sent workflow buttons.
+Update the web service, DM worker and cron scheduler to the same image. Run `npm run db:migrate` with the new image before starting the updated web service and worker. If your deployment already runs migrations as a release/start step, keep that step enabled. The migrations add `Automation.openingDmButtons` with an empty-array default, stored link positions and nullable recipient click hashes. Existing link positions are backfilled. Back up the database before rollout. Rolling back the application leaves these additive columns in place; old code cannot execute newly sent workflow buttons.
 
 ## Live acceptance test
 

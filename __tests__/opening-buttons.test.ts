@@ -21,16 +21,18 @@ describe("opening buttons", () => {
       expect(openingButtonsSchema.safeParse(value).success).toBe(false);
     }
   });
-  it("keeps legacy reveal and follow-gate postbacks", () => {
+  it("marks opening reveal and follow-gate buttons separately from follow prompts", () => {
     const campaign = {
       id: "source",
       openingDmButtonLabel: "Continue",
       requireFollow: false,
     };
-    expect(buildOpeningButtons(campaign)[0].payload).toBe("reveal:source");
+    expect(buildOpeningButtons(campaign)[0].payload).toBe("reveal:source:open");
     expect(
       buildOpeningButtons({ ...campaign, requireFollow: true })[0].payload,
-    ).toBe("followcheck:source");
+    ).toBe("followcheck:source:open");
+    expect(buildOpeningButtons({ ...campaign, requireFollow: true, openingDmButtons: [button] })[0].payload)
+      .toBe("followcheck:source:open");
   });
   it("binds a route to its source, button and target", () => {
     const payload = buildOpeningButtons({

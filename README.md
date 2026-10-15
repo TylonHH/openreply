@@ -43,6 +43,7 @@ OpenReply is built around Meta's official Instagram private replies. It does not
 - Multiple Instagram accounts. Connect several professional accounts under one workspace, each with its own limits.
 - Workspaces and roles. Owner, admin, and member roles with invite links, useful if you run this for clients.
 - Campaign templates. Start from a preset instead of a blank form.
+- English, Traditional Chinese and Brazilian Portuguese interface, with a saved language preference. See [interface languages](docs/localization.md).
 - Inbox. Read your Instagram DM conversations and reply from the dashboard, inside Meta's 24-hour messaging window. Cached so it loads instantly on repeat visits.
 - DM logs. Every send, skip, and failure is logged with a reason.
 - Self-comment filtering. Your own comments never trigger a reply, since Meta rejects DMing yourself anyway.
@@ -80,6 +81,8 @@ ghcr.io/tylonhh/openreply:latest
 ```
 
 See the complete [CapRover deployment guide](docs/deploy-caprover.md), including the one-time GHCR visibility step, HTTPS setup, updates, backups, and Meta configuration.
+
+**Moving from ManyChat or another DM tool?** Disconnect it from the Instagram account and give OpenReply control of conversations in Meta Business Suite, or button taps in DMs will fail with "not the thread owner". See [Migrating from ManyChat](docs/setup.md#migrating-from-manychat-or-another-dm-tool-give-openreply-control-of-conversations).
 
 ### Deploy the web app
 

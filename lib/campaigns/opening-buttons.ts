@@ -31,7 +31,7 @@ export function buildOpeningButtons(automation: {
   requireFollow: boolean;
 }) {
   const buttons = readOpeningButtons(automation.openingDmButtons);
-  const continuation = `${automation.requireFollow ? "followcheck" : "reveal"}:${automation.id}`;
+  const continuation = `${automation.requireFollow ? "followcheck" : "reveal"}:${automation.id}:open`;
   return buttons.length
     ? buttons.map((b) => ({
         title: b.label,
