@@ -40,6 +40,7 @@ interface LoadedCampaign {
   matchAnyPost: boolean;
   keywords: string[];
   matchAnyWord: boolean;
+  wholeWordMatch?: boolean;
   dmTriggerEnabled: boolean;
   dmMessage: string;
   openingDmButtons?: unknown;
@@ -163,6 +164,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
 
   const [matchMode, setMatchMode] = useState<MatchMode>("specific");
   const [keywordText, setKeywordText] = useState("");
+  const [wholeWordMatch, setWholeWordMatch] = useState(true);
   const [dmTriggerEnabled, setDmTriggerEnabled] = useState(false);
 
   const [publicReplyEnabled, setPublicReplyEnabled] = useState(false);
@@ -281,6 +283,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
         setPostUrl(c.postUrl);
         setMatchMode(c.matchAnyWord ? "any" : "specific");
         setKeywordText(c.keywords.join(", "));
+        setWholeWordMatch(c.wholeWordMatch ?? true);
         setDmTriggerEnabled(c.dmTriggerEnabled ?? false);
         setPublicReplyEnabled(c.publicReplyEnabled);
         setPublicReplyMessages(
@@ -436,6 +439,7 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
       pendingNextReel: triggerScope === "next",
       matchAnyWord: matchMode === "any",
       keywords: matchMode === "any" ? [] : keywords,
+      wholeWordMatch,
       dmTriggerEnabled,
       dmMessage,
       openingDmEnabled,
@@ -744,6 +748,18 @@ export default function CampaignBuilder({ mode, campaignId }: CampaignBuilderPro
                 className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-foreground placeholder:text-zinc-500 focus:border-accent/40 focus:outline-none"
               />
               <p className="text-xs text-muted">{t("Use commas to separate words")}</p>
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
+                <span className="text-sm text-foreground">{t("Match part of a word")}</span>
+                <Toggle
+                  on={!wholeWordMatch}
+                  onToggle={() => setWholeWordMatch(!wholeWordMatch)}
+                />
+              </div>
+              {!wholeWordMatch && (
+                <p className="text-xs text-muted">
+                  {t("Also fires when a keyword is part of a longer word, e.g. “link” in “links”.")}
+                </p>
+              )}
             </div>
           )}
           <Radio
