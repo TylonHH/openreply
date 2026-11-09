@@ -291,6 +291,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
     originalMediaId,
   } = job.data;
   const requeueAttempt = job.data.requeueAttempt ?? 0;
+  const leg = job.data.leg;
 
   const automations = await prisma.automation.findMany({
     where: {
@@ -460,6 +461,7 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
       replyPool.length > 0 &&
       !existingLog?.publicReplySentAt &&
       !existingLog?.publicReplyDeliveryUnconfirmed &&
+      (leg === undefined || leg === "reply") &&
       await claimCommentDelivery(automation.id, commentId, "public")
     ) {
       try {
@@ -499,6 +501,10 @@ async function processComment(job: Job<ProcessCommentJob>): Promise<void> {
           .catch(() => {});
       }
     }
+
+    // The public-reply leg stops here. Its job carried the reply's own delay,
+    // and the DM leg is queued separately, so there is nothing left to do.
+    if (leg === "reply") continue;
 
     // DM already sent on an earlier pass; the public reply retry above was all
     // this run needed. Don't re-send the DM.
