@@ -85,6 +85,7 @@ export const createCampaignSchema = createCampaignFields
 export const updateCampaignSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   goal: z.string().min(1).max(120).optional().nullable(),
+  instagramAccountId: z.string().min(1).optional(),
   postId: z.string().min(1).optional().nullable(),
   postUrl: z.string().url().optional().nullable(),
   pendingNextReel: z.boolean().optional(),
@@ -274,6 +275,24 @@ export async function updateCampaign(
     secondaryButtonLabel,
     ...automationData
   } = parsed.data;
+
+  // Moving a campaign to another account: it must be one of this workspace's.
+  if (
+    automationData.instagramAccountId !== undefined &&
+    automationData.instagramAccountId !== existing.instagramAccountId
+  ) {
+    const account = await prisma.instagramAccount.findFirst({
+      where: { id: automationData.instagramAccountId, workspaceId },
+      select: { id: true },
+    });
+    if (!account) {
+      return {
+        ok: false as const,
+        status: 404,
+        error: "Instagram account not found",
+      };
+    }
+  }
 
   // Keep dependent fields consistent: any-word clears keywords; a disabled
   // opening DM clears its message and button.
