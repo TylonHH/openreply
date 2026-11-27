@@ -32,7 +32,8 @@ export async function getCampaign(context: ServiceContext, id: string) {
     where: { id, workspaceId: context.workspaceId },
     select: {
       ...summarySelect, wholeWordMatch: true, dmTriggerEnabled: true,
-      openingDmEnabled: true, openingDmMessage: true, openingDmButtonLabel: true,
+      openingDmEnabled: true, openingDmButtons: true, openingDmMessage: true,
+      openingDmButtonLabel: true,
       linkButtonLabel: true, requireFollow: true, followPromptMessage: true,
       followPromptButtonLabel: true, followUpEnabled: true, followUpMessage: true,
       followUpDelayMinutes: true, publicReplyEnabled: true, publicReplyMessage: true,

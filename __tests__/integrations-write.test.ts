@@ -136,6 +136,36 @@ describe("create_campaign", () => {
     expect(state.automation.create).not.toHaveBeenCalled();
   });
 
+  it("carries the dashboard's opening DM buttons through the shared create", async () => {
+    storeCampaign({ id: "new", workspaceId: "ws", isActive: false });
+    const buttons = [
+      { id: "b1", label: "Yes", targetCampaignId: null },
+      { id: "b2", label: "No", targetCampaignId: null },
+    ];
+    await callTool(ctx(WRITE), "create_campaign", {
+      ...newCampaign,
+      openingDmEnabled: true,
+      openingDmMessage: "Pick one",
+      openingDmButtons: buttons,
+    });
+    expect(state.automation.create.mock.calls[0][0].data).toMatchObject({
+      openingDmEnabled: true,
+      openingDmButtons: buttons,
+      openingDmButtonLabel: "Yes",
+    });
+  });
+
+  it("refuses opening button workflows on an account that is not a direct Meta connection", async () => {
+    state.instagramAccount.findFirst.mockResolvedValue({ id: "acc", workspaceId: "ws", provider: "ZERNIO" });
+    await expect(callTool(ctx(WRITE), "create_campaign", {
+      ...newCampaign,
+      openingDmEnabled: true,
+      openingDmMessage: "Pick one",
+      openingDmButtons: [{ id: "b1", label: "Yes", targetCampaignId: null }],
+    })).rejects.toMatchObject({ status: 400, message: "Opening button workflows require a direct Meta connection" });
+    expect(state.automation.create).not.toHaveBeenCalled();
+  });
+
   it("applies the dashboard's rules: a post target and keywords are required", async () => {
     await expect(callTool(ctx(WRITE), "create_campaign", { name: "x", dmMessage: "y", keywords: ["A"] }))
       .rejects.toMatchObject({ status: 400, details: { fieldErrors: { postId: expect.any(Array) } } });
@@ -170,6 +200,22 @@ describe("update_campaign", () => {
     storeCampaign({ id: "c1", workspaceId: "ws", isActive: false });
     await callTool(ctx(WRITE), "update_campaign", { id: "c1", matchAnyPost: true });
     expect(state.automation.update.mock.calls[0][0].data).toEqual({ matchAnyPost: true, postId: null, postUrl: null });
+  });
+
+  it("updates opening DM buttons and keeps the legacy label in sync", async () => {
+    storeCampaign({ id: "c1", workspaceId: "ws", isActive: false });
+    const buttons = [{ id: "b1", label: "Yes", targetCampaignId: null }];
+    await callTool(ctx(WRITE), "update_campaign", {
+      id: "c1",
+      openingDmEnabled: true,
+      openingDmMessage: "Pick one",
+      openingDmButtons: buttons,
+    });
+    expect(state.automation.update.mock.calls[0][0].data).toMatchObject({
+      openingDmEnabled: true,
+      openingDmButtons: buttons,
+      openingDmButtonLabel: "Yes",
+    });
   });
 
   it("will not edit a live campaign without campaigns:activate", async () => {

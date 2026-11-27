@@ -389,7 +389,6 @@
   "Worker health": "Состояние обработчика",
   "Workspace": "Рабочее пространство",
   "Workspace invitation": "Приглашение в рабочее пространство",
-  "Workspace-scoped, read-only keys. No key can modify campaigns or send messages. Only admins and owners can manage keys.": "Ключи только для чтения, ограниченные рабочим пространством. Ни один ключ не может изменять кампании или отправлять сообщения. Управлять ключами могут только администраторы и владельцы.",
   "Write a message": "Напишите сообщение",
   "Write a reply…  (Enter to send, Shift+Enter for a new line)": "Напишите ответ…  (Enter — отправить, Shift+Enter — новая строка)",
   "You declined the permission prompt on Instagram. Start again and accept all requested permissions.": "Вы отклонили запрос разрешений в Instagram. Начните заново и примите все запрошенные разрешения.",
@@ -482,5 +481,14 @@
   "Save timing": "Сохранить время",
   "Saving...": "Сохранение...",
   "sec": "с",
-  "Timing saved": "Время сохранено"
+  "Timing saved": "Время сохранено",
+  "Read campaigns, posts and DM logs": "Чтение кампаний, публикаций и журналов сообщений",
+  "Create, edit, pause and delete campaigns (new campaigns start paused)": "Создание, изменение, приостановка и удаление кампаний (новые кампании создаются на паузе)",
+  "Turn campaigns on, so they start sending messages": "Включение кампаний, чтобы они начали отправлять сообщения",
+  "Create a key for {days} days that can turn campaigns on? Anyone with this key can make your account send messages.": "Создать ключ на {days} дн. с правом включать кампании? Любой, у кого есть этот ключ, сможет отправлять сообщения от вашего аккаунта.",
+  "Create a key for {days} days that can change campaigns? Anyone with this key can edit and delete your campaigns.": "Создать ключ на {days} дн. с правом изменять кампании? Любой, у кого есть этот ключ, сможет изменять и удалять ваши кампании.",
+  "Workspace-scoped keys for the API and MCP server. Keys are read-only unless you allow more. Only admins and owners can manage keys.": "Ключи для API и сервера MCP в пределах рабочего пространства. По умолчанию ключи доступны только для чтения. Управлять ключами могут только администраторы и владельцы.",
+  "Permissions": "Разрешения",
+  "Editing a live campaign also needs campaigns:activate. Without it, a key has to pause the campaign first.": "Для изменения активной кампании также требуется campaigns:activate. Без этого права ключ должен сначала приостановить кампанию.",
+  "Last used: {date}": "Последнее использование: {date}"
 }

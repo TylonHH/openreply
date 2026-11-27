@@ -80,9 +80,10 @@ around a client limitation.
 (`lib/campaigns/mutations.ts`), so the same rules apply: a campaign targets one
 post (`postId`), every post (`matchAnyPost`) or the next reel
 (`pendingNextReel`); it has keywords or `matchAnyWord`; an opening DM needs a
-message and a button label. `isActive` and `reportShareEnabled` are not
-accepted: activation has its own tool and report sharing stays in the dashboard.
-Validation errors return the field errors.
+message and either `openingDmButtonLabel` or up to three `openingDmButtons`
+(button workflows require a direct Meta connection). `isActive` and
+`reportShareEnabled` are not accepted: activation has its own tool and report
+sharing stays in the dashboard. Validation errors return the field errors.
 
 ## REST
 
